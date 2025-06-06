@@ -13,12 +13,12 @@ A command-line tool to copy open package pull requests from `spack/spack` to `sp
 
 1. Clone this tool repository:
 ```bash
-git clone https://github.com/spack/migrate-pkg-prs.git
+git clone https://github.com/spack/migrate-package-prs.git
 ```
 
 2. Add the tool to your PATH:
 ```bash
-export PATH="$PWD/migrate-pkg-prs/bin:$PATH"
+export PATH="$PWD/migrate-package-prs/bin:$PATH"
 ```
 
 3. Clone the new package repository and navigate to it:
