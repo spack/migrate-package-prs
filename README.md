@@ -13,12 +13,12 @@ A command-line tool to copy open package pull requests from `spack/spack` to `sp
 
 1. Clone this tool repository:
 ```bash
-git clone https://github.com/spack/migrate-package-prs.git
+git clone https://github.com/spack/migrate-pkg-prs.git
 ```
 
 2. Add the tool to your PATH:
 ```bash
-export PATH="$PWD/migrate-package-prs/bin:$PATH"
+export PATH="$PWD/migrate-pkg-prs/bin:$PATH"
 ```
 
 3. Clone the new package repository and navigate to it:
@@ -29,12 +29,12 @@ cd spack-packages
 
 4. Do a dry-run of the migration tool from within the `spack-packages` directory:
 ```bash
-migrate-prs
+migrate-pkg-prs
 ```
 
 5. If that looks good, run the tool with the `--migrate` option to create actual PRs:
 ```bash
-migrate-prs --migrate
+migrate-pkg-prs --migrate
 ```
 
 ## Command Syntax
@@ -42,7 +42,7 @@ migrate-prs --migrate
 For advanced usage, you can specify options and PR numbers:
 
 ```bash
-migrate-prs [OPTIONS] [PR_NUMBERS...]
+migrate-pkg-prs [OPTIONS] [PR_NUMBERS...]
 ```
 
 ### Arguments
@@ -66,27 +66,27 @@ migrate-prs [OPTIONS] [PR_NUMBERS...]
 
 ### Copy all open PRs for current GitHub user to local branches
 ```bash
-migrate-prs
+migrate-pkg-prs
 ```
 
 ### Copy and create PRs in spack/spack-packages
 ```bash
-migrate-prs --migrate
+migrate-pkg-prs --migrate
 ```
 
 ### Copy all open PRs for a specific user
 ```bash
-migrate-prs --author johndoe
+migrate-pkg-prs --author johndoe
 ```
 
 ### Copy specific PRs and create PRs in target repo
 ```bash
-migrate-prs --migrate 12345 67890
+migrate-pkg-prs --migrate 12345 67890
 ```
 
 ### Copy only a single PR to a local branch
 ```bash
-migrate-prs 12345
+migrate-pkg-prs 12345
 ```
 
 ## How It Works
