@@ -195,10 +195,17 @@ check_dependencies() {
     command -v gh >/dev/null 2>&1 || missing="${missing}gh "
     command -v git >/dev/null 2>&1 || missing="${missing}git "
     command -v jq >/dev/null 2>&1 || missing="${missing}jq "
-    
+
     if [ -n "$missing" ]; then
         printf "Missing required dependencies: \033[1m%s\033[0m\n" "$missing" >&2
         exit 1
+    fi
+
+    limit=$(git config diff.renameLimit || echo 1)
+    desired_limit=1600
+    if [ "$limit" -lt "$desired_limit" ]; then
+        echo "Adjusting git diff.renameLimit to $desired_limit to improve rename detection"
+        git config diff.renameLimit $desired_limit
     fi
 }
 
