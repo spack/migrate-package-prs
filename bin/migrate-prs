@@ -1,0 +1,250 @@
+#!/bin/sh
+
+# Exit on error, undefined variables, and pipe failures
+set -eu
+
+show_help() {
+    printf "Usage: %s [OPTIONS] [PR_NUMBERS...]\n\n" "$1"
+    printf "Copy open PRs from spack/spack to spack/spack-packages.\n\n"
+    printf "Arguments:\n"
+    printf "  PR_NUMBERS    Specific PR numbers to process\n\n"
+    printf "Options:\n"
+    printf "  --author USER     Process all open PRs for the specified GitHub user\n"
+    printf "  --migrate         Create PRs in spack/spack-packages (default: local branches only)\n"
+    printf "  -h, --help        Show this help message\n\n"
+    printf "Behavior:\n"
+    printf "  - --author and PR_NUMBERS are mutually exclusive\n"
+    printf "  - If PR_NUMBERS are specified: process only those PRs\n"
+    printf "  - If --author is specified: process all open PRs for that user\n"
+    printf "  - If neither: process all open PRs for the currently authenticated GitHub user\n\n"
+    printf "Examples:\n"
+    printf "  %s                        # Copy all open PRs for current GitHub user\n" "$1"
+    printf "  %s --migrate              # Copy all open PRs for current GitHub user and create PRs in spack/spack-packages\n" "$1"
+    printf "  %s --author johndoe       # Copy all open PRs for user 'johndoe'\n" "$1"
+    printf "  %s --migrate 12345 67890  # Copy specific PRs and create PRs in spack/spack-packages\n" "$1"
+    printf "  %s 12345                  # Copy only PR #12345\n\n" "$1"
+    printf "Requirements:\n"
+    printf "  - gh CLI tool (authenticated)\n"
+    printf "  - git repository with spack-packages remote\n"
+    printf "  - current directory should be a spack-packages clone\n"
+}
+
+cherry_pick_pr() {
+    pr="$1"
+
+    # Fetch the spack/spack PR
+    if ! git fetch --no-tags https://github.com/spack/spack.git "pull/$pr/head" >/dev/null 2>&1; then
+        printf ": \033[0;33mfailed to fetch.\033[0m\n" >&2
+        return 1
+    fi
+
+    # Find the merge base with spack/spack develop
+    base="$(git merge-base spack-develop FETCH_HEAD)"
+
+    # Get the list of commmits excluding merges
+    commits="$(git rev-list --reverse --no-merges "$base"..FETCH_HEAD)"
+
+    if ! git cherry-pick $commits >/dev/null 2>&1; then
+        git cherry-pick --abort
+        printf ": \033[0;33mcherry-pick failed (conflict or non-package PR)\033[0m\n" >&2
+        return 1
+    fi
+}
+
+process() {
+    migrate="$1"
+    shift
+
+    printf "Processing \033[1;32m%d pull requests\033[0m\n" "$#"
+    
+    total=$#
+    current=0
+    success=0
+    failed=0
+
+    for pr in "$@"; do
+        current=$((current + 1))
+        
+        # Get the title and modify the body to include the original PR link
+        title="$(gh --repo spack/spack pr view "$pr" --json title --jq .title)"
+        body="$(gh --repo spack/spack pr view "$pr" --json body --jq .body)"
+        body="$(printf "> [!NOTE]\n> This PR was migrated from **https://github.com/spack/spack/pull/%s**.\n\n%s" "$pr" "$body")"
+
+        printf "[%d/%d] '%s' (#%s)" "$current" "$total" "$title" "$pr"
+        # Create a detached HEAD state, reset to spack-packages develop, cherry-pick the PR,
+        # and if successful, create a new branch named spack-pr-$pr.
+        if ! git checkout --detach >/dev/null 2>&1; then
+            printf ": \033[0;33mfailed to leave current branch.\033[0m\n" >&2
+            failed=$((failed + 1))
+            continue
+        fi
+
+        if ! git reset --hard spack-packages-develop >/dev/null 2>&1; then
+            printf ": \033[0;33mfailed to reset to spack-packages develop.\033[0m\n" >&2
+            failed=$((failed + 1))
+            continue
+        fi
+
+        if ! cherry_pick_pr "$pr"; then
+            failed=$((failed + 1))
+            continue
+        fi
+
+        new_branch="spack-pr-$pr"
+
+        # If this branch already exists from a previous run, delete it
+        if git show-ref --verify "refs/heads/$new_branch" >/dev/null 2>&1 && ! git branch -D "$new_branch" >/dev/null 2>&1; then
+            printf ": \033[0;33mfailed to delete existing branch %s.\033[0m\n" "$new_branch" >&2
+            failed=$((failed + 1))
+            continue
+        fi
+
+        if ! git checkout -b "$new_branch" >/dev/null 2>&1; then
+            printf ": \033[0;33mfailed to create branch %s.\033[0m\n" "$new_branch" >&2
+            failed=$((failed + 1))
+            continue
+        fi
+        printf ": local branch \033[1;32m%s\033[0m\n" "$new_branch"
+
+        # Let gh deal with pushing this branch so we don't have to figure
+        # out which remote to push to
+        if [ "$migrate" -eq 1 ] && ! gh pr create \
+                --repo spack/spack-packages \
+                --title "$title" \
+                --body "$body" \
+                --base develop; then
+            printf "    \033[0;33mFailed to create PR to spack/spack-packages.\033[0m\n" >&2
+            exit 1
+        fi
+
+        success=$((success + 1))
+    done
+    
+    printf "Summary: \033[1;32mcopied %d\033[0m and \033[0;33mskipped %d\033[0m\n" "$success" "$failed"
+}
+
+main() {
+    author="$1"
+    migrate="$2"
+    shift 2
+
+    prs="$@"
+
+    if [ -z "$prs" ]; then
+        prs=$(gh --repo spack/spack pr list --state open --json number --author "$author" --limit 100 --jq '.[] | .number')
+    fi
+
+    # Check if any PRs were found
+    if [ -z "$prs" ]; then
+        printf "No open PRs found for user: \033[1;32m%s\033[0m\n" "$author"
+        exit 0
+    fi
+
+    printf "Fetching \033[1;32mspack/spack-packages\033[0m's develop branch...\n"
+    if ! git fetch --no-tags https://github.com/spack/spack-packages.git develop:spack-packages-develop; then
+        printf ": \033[0;33mFailed to fetch spack-packages develop branch. Exiting.\033[0m\n" >&2
+        exit 1
+    fi
+
+    printf "Fetching \033[1;32mspack/spack\033[0m's develop branch...\n"
+    if ! git fetch --no-tags https://github.com/spack/spack.git develop:spack-develop; then
+        printf ": \033[0;33mFailed to fetch spack develop branch. Exiting.\033[0m\n" >&2
+        exit 1
+    fi
+
+    process "$migrate" $prs
+}
+
+program="$0"
+migrate=0
+username=""
+prs=""
+
+while [ $# -gt 0 ]; do
+    arg="$1"
+    shift
+    case "$arg" in
+        -h|--help)
+            show_help "$program"
+            exit 0
+            ;;
+        --migrate)
+            migrate=1
+            ;;
+        --author)
+            if [ -z "$1" ]; then
+                printf "\033[0;33m--author requires a GitHub username.\033[0m\n" >&2
+                exit 1
+            fi
+            username="$1"
+            shift
+            ;;
+        -*)
+            printf "\033[0;33mUnknown option: %s\033[0m\n" "$arg" >&2
+            show_help "$program"
+            exit 1
+            ;;
+        *)
+            prs="${prs:+$prs }$arg"
+            ;;
+    esac
+done
+
+check_dependencies() {
+    missing=""
+    command -v gh >/dev/null 2>&1 || missing="${missing}gh "
+    command -v git >/dev/null 2>&1 || missing="${missing}git "
+    command -v jq >/dev/null 2>&1 || missing="${missing}jq "
+    
+    if [ -n "$missing" ]; then
+        printf "Missing required dependencies: \033[1m%s\033[0m\n" "$missing" >&2
+        exit 1
+    fi
+}
+
+check_dependencies
+
+# username and pr numbers are mutually exclusive
+if [ -n "$username" ] && [ -n "$prs" ]; then
+    printf "\033[1;31mCannot specify both --author and PR numbers.\033[0m\n" >&2
+    show_help "$program"
+    exit 1
+fi
+
+# If no PR numbers are specified and no username provided, derive it.
+if [ -z "$prs" ] && [ -z "$username" ]; then
+    if ! username="$(gh api user -q '.login' 2>/dev/null)"; then
+        printf "\033[1;31mFailed to get GitHub username. Please authenticate with 'gh auth login' or provide username as argument.\033[0m\n" >&2
+        exit 1
+    fi
+fi
+
+if [ -z "$prs" ] && [ -z "$username" ]; then
+    show_help "$program"
+    exit 1
+fi
+
+if [ -n "$username" ]; then
+    printf "Pull requests of GitHub user \033[1;32m%s\033[0m" "$username"
+else
+    # Add # prefix to each PR number for display
+    formatted_prs=""
+    for pr in $prs; do
+        formatted_prs="${formatted_prs:+$formatted_prs, }#$pr"
+    done
+    printf "Pull requests {%s}" "$formatted_prs"
+fi
+
+if [ "$migrate" -eq 1 ]; then
+    printf " are migrated to spack/spack-packages\n"
+else
+    printf " are copied to local branches\n"
+fi
+
+# Check if we're in a git repository with spack/spack-packages as a remote
+if ! git remote -v | grep -q 'spack-packages'; then
+    printf "\033[1;31mThis script is intended to be run in a clone of https://github.com/spack/spack-packages\033[0m\n" >&2
+    exit 1
+fi
+
+main "$username" "$migrate" "$prs"
