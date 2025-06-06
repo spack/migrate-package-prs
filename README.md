@@ -26,20 +26,20 @@ A command-line tool to copy open package pull requests from `spack/spack` to `sp
 ## Usage Instructions
 
 1. Clone the new package repository and navigate to it:
-```bash
-git clone https://github.com/spack/spack-packages.git
-cd spack-packages
-```
+   ```bash
+   git clone https://github.com/spack/spack-packages.git
+   cd spack-packages
+   ```
 
 2. Do a dry-run of the migration tool from within the `spack-packages` directory:
-```bash
-migrate-pkg-prs
-```
+   ```bash
+   migrate-pkg-prs
+   ```
 
 3. If that looks good, run the tool with the `--migrate` option to create actual PRs:
-```bash
-migrate-pkg-prs --migrate
-```
+   ```bash
+   migrate-pkg-prs --migrate
+   ```
 
 ## Command Syntax
 
