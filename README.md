@@ -9,30 +9,34 @@ A command-line tool to copy open package pull requests from `spack/spack` to `sp
 - `jq` for JSON processing
 - Current directory should be a clone of `spack/spack-packages`
 
+## Installation Instructions
+
+1. Either use Spack to install the tool:
+   ```bash
+   spack install migrate-package-prs
+   spack load migrate-package-prs
+   ```
+2. Or, if you already have the `gh` and `jq` utilities, you can simply clone the repository and add
+   it to your PATH.
+   ```bash
+   git clone https://github.com/spack/migrate-package-prs.git
+   export PATH="$PWD/migrate-package-prs/bin:$PATH"
+   ```
+
 ## Usage Instructions
 
-1. Clone this tool repository:
-```bash
-git clone https://github.com/spack/migrate-package-prs.git
-```
-
-2. Add the tool to your PATH:
-```bash
-export PATH="$PWD/migrate-package-prs/bin:$PATH"
-```
-
-3. Clone the new package repository and navigate to it:
+1. Clone the new package repository and navigate to it:
 ```bash
 git clone https://github.com/spack/spack-packages.git
 cd spack-packages
 ```
 
-4. Do a dry-run of the migration tool from within the `spack-packages` directory:
+2. Do a dry-run of the migration tool from within the `spack-packages` directory:
 ```bash
 migrate-pkg-prs
 ```
 
-5. If that looks good, run the tool with the `--migrate` option to create actual PRs:
+3. If that looks good, run the tool with the `--migrate` option to create actual PRs:
 ```bash
 migrate-pkg-prs --migrate
 ```
